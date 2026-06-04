@@ -1,0 +1,116 @@
+.call-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.85); backdrop-filter: blur(10px);
+}
+
+/* ── Incoming / Calling card ─────────────────── */
+.call-card {
+  position: relative; display: flex; flex-direction: column;
+  align-items: center; gap: 20px; padding: 48px 40px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 24px; min-width: 320px; text-align: center;
+  box-shadow: 0 0 80px rgba(124,58,237,.2);
+}
+
+.call-pulse {
+  position: absolute; inset: -1px; border-radius: 24px;
+  background: transparent; border: 2px solid var(--accent);
+  animation: pulse-border 1.5s ease-in-out infinite;
+}
+@keyframes pulse-border {
+  0%,100% { opacity:.3; transform:scale(1); }
+  50% { opacity:.8; transform:scale(1.01); }
+}
+
+.call-avatar-ring {
+  position: relative; width: 90px; height: 90px;
+}
+.call-avatar-ring::before {
+  content: ""; position: absolute; inset: -8px; border-radius: 50%;
+  border: 2px solid var(--accent); animation: ring-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ring-pulse {
+  0%,100% { opacity:.4; transform:scale(1); }
+  50% { opacity:1; transform:scale(1.08); }
+}
+.call-avatar-ring img { width: 90px; height: 90px; border-radius: 50%; }
+
+.call-info { display: flex; flex-direction: column; gap: 4px; }
+.call-label { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
+.call-info h2 { font-size: 24px; font-weight: 800; }
+.call-room { font-size: 13px; color: var(--accent2); }
+
+.call-spinner {
+  width: 56px; height: 56px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  animation: spin .9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.call-actions { display: flex; gap: 20px; }
+.incoming-actions { margin-top: 8px; }
+
+.call-btn {
+  width: 60px; height: 60px; border-radius: 50%;
+  font-size: 22px; font-weight: 700; transition: all .2s;
+  display: flex; align-items: center; justify-content: center;
+}
+.call-btn.accept { background: var(--success); color: white; }
+.call-btn.accept:hover { transform: scale(1.1); background: #059669; }
+.call-btn.reject { background: var(--danger); color: white; }
+.call-btn.reject:hover { transform: scale(1.1); background: #dc2626; }
+.call-btn.end { background: var(--danger); color: white; border-radius: 30px; width: auto; padding: 0 24px; font-size: 14px; }
+.call-btn.end:hover { background: #dc2626; }
+
+.calling-preview {
+  margin-top: 8px; border-radius: 12px; width: 200px; height: 130px;
+  object-fit: cover; border: 1px solid var(--border);
+}
+
+/* ── Active call ─────────────────────────────── */
+.call-active { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; }
+
+.remote-video {
+  flex: 1; width: 100%; height: 100%; object-fit: cover;
+  background: #111;
+}
+
+.local-preview.pip {
+  position: absolute; bottom: 100px; right: 20px;
+  width: 140px; height: 100px; border-radius: 12px;
+  object-fit: cover; border: 2px solid var(--border);
+  box-shadow: 0 4px 20px rgba(0,0,0,.5);
+}
+
+.call-controls {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 24px; display: flex; justify-content: center;
+  background: linear-gradient(transparent, rgba(0,0,0,.8));
+}
+.call-controls-inner { display: flex; gap: 16px; align-items: center; }
+
+.ctrl-btn {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: rgba(255,255,255,.1); font-size: 20px;
+  transition: all .2s; backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,.15);
+  display: flex; align-items: center; justify-content: center;
+}
+.ctrl-btn:hover { background: rgba(255,255,255,.2); transform: scale(1.08); }
+.ctrl-btn.active { background: rgba(239,68,68,.3); border-color: var(--danger); }
+.ctrl-btn.end-call { background: var(--danger); border-color: var(--danger); }
+.ctrl-btn.end-call:hover { background: #dc2626; }
+
+.call-badge {
+  position: absolute; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px; padding: 6px 16px;
+  background: rgba(0,0,0,.6); border-radius: 20px;
+  font-size: 12px; font-family: var(--font-mono); color: var(--text);
+  backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.1);
+}
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+  animation: blink 1s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }

@@ -1,0 +1,5 @@
+.loader-wrap { height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px; background:var(--bg); }
+.loader-wrap span { font-family:var(--font-mono); font-size:11px; letter-spacing:4px; color:var(--accent); animation:pulse 1.5s ease-in-out infinite; }
+.loader-ring { width:40px; height:40px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--accent); animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+@keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }

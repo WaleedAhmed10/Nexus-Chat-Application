@@ -1,0 +1,19 @@
+.auth-page { min-height:100vh; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden; }
+.auth-bg { position:absolute; inset:0; }
+.auth-grid { position:absolute; inset:0; background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px); background-size:60px 60px; opacity:.3; }
+.auth-glow { position:absolute; top:20%; left:50%; transform:translateX(-50%); width:600px; height:600px; border-radius:50%; background:radial-gradient(circle,rgba(124,58,237,.15) 0%,transparent 70%); }
+.auth-card { position:relative; z-index:1; background:var(--surface); border:1px solid var(--border); border-radius:20px; padding:40px; width:420px; max-width:95vw; box-shadow:0 0 60px rgba(124,58,237,.1); }
+.auth-logo { font-family:var(--font-mono); font-size:22px; font-weight:700; color:var(--accent); letter-spacing:3px; margin-bottom:6px; }
+.auth-sub { color:var(--text-muted); font-size:13px; margin-bottom:28px; }
+.auth-tabs { display:flex; gap:4px; background:var(--bg); border-radius:10px; padding:4px; margin-bottom:28px; }
+.auth-tab { flex:1; padding:8px; border-radius:8px; background:transparent; color:var(--text-muted); font-family:var(--font-display); font-size:13px; font-weight:600; transition:all .2s; }
+.auth-tab.active { background:var(--accent); color:white; }
+.auth-form { display:flex; flex-direction:column; gap:16px; }
+.field { display:flex; flex-direction:column; gap:6px; }
+.field label { font-size:11px; font-weight:700; letter-spacing:1px; color:var(--text-muted); text-transform:uppercase; }
+.field input { background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:12px 14px; color:var(--text); font-size:14px; transition:border .2s; }
+.field input:focus { border-color:var(--accent); }
+.auth-error { background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); border-radius:8px; padding:10px 14px; color:#fca5a5; font-size:13px; }
+.auth-btn { background:var(--accent); color:white; border-radius:10px; padding:14px; font-family:var(--font-display); font-size:15px; font-weight:700; transition:all .2s; margin-top:4px; }
+.auth-btn:hover:not(:disabled) { background:#6d28d9; transform:translateY(-1px); }
+.auth-btn:disabled { opacity:.5; }
