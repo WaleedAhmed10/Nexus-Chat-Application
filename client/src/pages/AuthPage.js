@@ -37,7 +37,7 @@ export default function AuthPage() {
         </div>
         <div className="auth-tabs">
           {["login","register"].map(m => (
-            <button key={m} className={`auth-tab ${mode===m?"active":""}`} onClick={() => setMode(m)}>
+            <button key={m} className={`auth-tab ${mode===m?"active":""}`} onClick={() => { setMode(m); setError(""); }}>
               {m === "login" ? "Sign In" : "Create Account"}
             </button>
           ))}
@@ -55,7 +55,7 @@ export default function AuthPage() {
           </div>
           <div className="field">
             <label>Password</label>
-            <input name="password" type="password" value={form.password} onChange={handle} placeholder="••••••••" required />
+            <input name="password" type="password" value={form.password} onChange={handle} placeholder="••••••••" required minLength={6} />
           </div>
           {error && <div className="auth-error">{error}</div>}
           <button className="auth-btn" disabled={loading}>

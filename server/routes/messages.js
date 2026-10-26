@@ -1,19 +1,25 @@
 const router = require("express").Router();
 const Message = require("../models/Message");
 const { verifyToken } = require("../middleware/auth");
+const { canAccessRoom } = require("../utils/roomAccess");
 
 router.use(verifyToken);
 
-// Get messages for a room
+// Get the latest messages for a room (oldest -> newest)
 router.get("/:roomId", async (req, res) => {
   try {
+    if (!(await canAccessRoom(req.params.roomId, req.user._id)))
+      return res.status(403).json({ message: "No access to this room" });
+
+    // Sort newest-first so limit() keeps the LATEST 100, then flip for display.
     const messages = await Message.find({ room: req.params.roomId })
       .populate("sender", "username avatar")
-      .sort({ createdAt: 1 })
+      .sort({ createdAt: -1 })
       .limit(100);
-    res.json(messages);
+    res.json(messages.reverse());
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

@@ -7,7 +7,7 @@ import CallUI from "../components/CallUI";
 import "./ChatPage.css";
 
 const getAvatar = (username) =>
-  `https://api.dicebear.com/7.x/initials/svg?seed=${username}&backgroundColor=7c3aed&textColor=ffffff`;
+  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(username)}&backgroundColor=7c3aed&textColor=ffffff`;
 
 export default function ChatPage() {
   const { user, logout } = useAuth();
@@ -32,15 +32,43 @@ export default function ChatPage() {
   } = useWebRTC({ socket, roomId: activeRoom?._id, currentUser: user });
 
   useEffect(() => {
-    axios.get("/api/rooms").then(({ data }) => setRooms(data));
+    axios.get("/api/rooms").then(({ data }) => setRooms(data)).catch((err) => console.error("Failed to load rooms", err));
   }, []);
 
   useEffect(() => {
     if (!socket || !activeRoom) return;
-    socket.emit("room:join", activeRoom._id);
-    axios.get(`/api/messages/${activeRoom._id}`).then(({ data }) => setMessages(data));
+    const roomId = activeRoom._id;
+    let cancelled = false;
 
-    const onMessage = (msg) => setMessages((prev) => [...prev, msg]);
+    setMessages([]); // don't show the previous room's messages while loading
+
+    // Merge by _id so a message that arrives over the socket while the history
+    // request is in flight is neither lost nor duplicated.
+    const mergeMessages = (prev, incoming) => {
+      const seen = new Set(prev.map((m) => m._id));
+      return [...prev, ...incoming.filter((m) => !seen.has(m._id))].sort(
+        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+      );
+    };
+
+    const loadHistory = () =>
+      axios
+        .get(`/api/messages/${roomId}`)
+        .then(({ data }) => { if (!cancelled) setMessages((prev) => mergeMessages(prev, data)); })
+        .catch((err) => console.error("Failed to load messages", err));
+
+    // Socket rooms are lost on reconnect, so (re)join on every connect.
+    const joinAndLoad = () => {
+      socket.emit("room:join", roomId);
+      loadHistory();
+    };
+    if (socket.connected) joinAndLoad();
+    socket.on("connect", joinAndLoad);
+
+    const onMessage = (msg) => {
+      if (String(msg.room) !== String(roomId)) return;
+      setMessages((prev) => mergeMessages(prev, [msg]));
+    };
     const onTyping = ({ username, isTyping }) => {
       setTypingUsers((prev) =>
         isTyping ? [...new Set([...prev, username])] : prev.filter((u) => u !== username)
@@ -51,12 +79,14 @@ export default function ChatPage() {
     socket.on("typing:update", onTyping);
 
     return () => {
+      cancelled = true;
+      socket.off("connect", joinAndLoad);
       socket.off("message:receive", onMessage);
       socket.off("typing:update", onTyping);
-      socket.emit("room:leave", activeRoom._id);
+      socket.emit("room:leave", roomId);
       setTypingUsers([]);
     };
-  }, [socket, activeRoom]);
+  }, [socket, activeRoom?._id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -66,6 +96,7 @@ export default function ChatPage() {
     e.preventDefault();
     if (!input.trim() || !socket || !activeRoom) return;
     socket.emit("message:send", { roomId: activeRoom._id, content: input.trim() });
+    clearTimeout(typingTimer.current);
     socket.emit("typing:stop", { roomId: activeRoom._id });
     setInput("");
   };
@@ -82,20 +113,31 @@ export default function ChatPage() {
 
   const createRoom = async (e) => {
     e.preventDefault();
-    if (!newRoom.trim()) return;
-    const { data } = await axios.post("/api/rooms", { name: newRoom.trim() });
-    setRooms((prev) => [...prev, data]);
-    setNewRoom("");
-    setShowNewRoom(false);
-    setActiveRoom(data);
+    if (!newRoom.trim() || inCall) return;
+    try {
+      const { data } = await axios.post("/api/rooms", { name: newRoom.trim() });
+      setRooms((prev) => [...prev, data]);
+      setNewRoom("");
+      setShowNewRoom(false);
+      setActiveRoom(data);
+      setSidebarOpen(false);
+    } catch (err) {
+      alert(err.response?.data?.message || "Could not create room");
+    }
   };
 
   const joinRoom = async (room) => {
-    await axios.post(`/api/rooms/${room._id}/join`);
-    setActiveRoom(room);
-    setSidebarOpen(false);
+    if (inCall || room._id === activeRoom?._id) { setSidebarOpen(false); return; }
+    try {
+      await axios.post(`/api/rooms/${room._id}/join`);
+      setActiveRoom(room);
+      setSidebarOpen(false);
+    } catch (err) {
+      alert(err.response?.data?.message || "Could not join room");
+    }
   };
 
+  const inCall = callState !== "idle"; // switching rooms mid-call would break signaling
   const isOnline = (uid) => onlineUsers.includes(String(uid));
   const formatTime = (ts) => new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
@@ -151,6 +193,7 @@ export default function ChatPage() {
               key={r._id}
               className={`room-item ${activeRoom?._id === r._id ? "active" : ""}`}
               onClick={() => joinRoom(r)}
+              disabled={inCall && r._id !== activeRoom?._id}
             >
               <span className="room-hash">#</span>
               <span>{r.name}</span>
@@ -200,9 +243,11 @@ export default function ChatPage() {
                 </div>
               )}
               {messages.map((msg, i) => {
-                const isMine = msg.sender._id === user._id || msg.sender === user._id;
-                const senderName = msg.sender.username || "Unknown";
-                const showAvatar = i === 0 || messages[i - 1].sender._id !== msg.sender._id;
+                const senderId = msg.sender?._id || msg.sender; // populated object or raw id
+                const prevSenderId = i > 0 ? messages[i - 1].sender?._id || messages[i - 1].sender : null;
+                const isMine = senderId === user._id;
+                const senderName = msg.sender?.username || "Unknown";
+                const showAvatar = i === 0 || prevSenderId !== senderId;
                 return (
                   <div key={msg._id || i} className={`msg ${isMine ? "mine" : ""}`}>
                     {!isMine && showAvatar && (
@@ -213,7 +258,7 @@ export default function ChatPage() {
                       {!isMine && showAvatar && (
                         <div className="msg-meta">
                           <span className="msg-username">{senderName}</span>
-                          <span className={`dot ${isOnline(msg.sender._id) ? "on" : "off"}`} />
+                          <span className={`dot ${isOnline(senderId) ? "on" : "off"}`} />
                         </div>
                       )}
                       <div className="bubble">

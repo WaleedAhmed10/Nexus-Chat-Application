@@ -10,6 +10,7 @@ const messageRoutes = require("./routes/messages");
 const roomRoutes = require("./routes/rooms");
 const { verifySocketToken } = require("./middleware/auth");
 const Message = require("./models/Message");
+const { canAccessRoom } = require("./utils/roomAccess");
 
 const app = express();
 const server = http.createServer(app);
@@ -35,31 +36,56 @@ app.get("/", (req, res) => res.json({ status: "Chat API running" }));
 // Socket.io middleware
 io.use(verifySocketToken);
 
-// Track online users: userId -> socketId
+// Track online users: userId -> Set of socketIds (a user may have several tabs/devices)
 const onlineUsers = new Map();
+
+const broadcastOnline = () => io.emit("users:online", Array.from(onlineUsers.keys()));
+
+// A socket may only signal/type in rooms it has successfully joined
+const inRoom = (socket, roomId) => typeof roomId === "string" && socket.rooms.has(roomId);
 
 io.on("connection", (socket) => {
   const userId = socket.user.id;
   const username = socket.user.username;
 
-  onlineUsers.set(userId, socket.id);
-  io.emit("users:online", Array.from(onlineUsers.keys()));
+  if (!onlineUsers.has(userId)) onlineUsers.set(userId, new Set());
+  onlineUsers.get(userId).add(socket.id);
+  broadcastOnline();
   console.log(`✅ ${username} connected (${socket.id})`);
 
-  // Join a room
-  socket.on("room:join", (roomId) => {
-    socket.join(roomId);
-    socket.emit("room:joined", roomId);
+  // Join a room (only if public or the user is a member)
+  socket.on("room:join", async (roomId) => {
+    try {
+      if (!(await canAccessRoom(roomId, userId))) {
+        return socket.emit("error:message", { message: "No access to this room" });
+      }
+      socket.join(roomId);
+      socket.emit("room:joined", roomId);
+    } catch (err) {
+      console.error(err);
+    }
   });
 
   // Leave a room
   socket.on("room:leave", (roomId) => {
+    if (typeof roomId !== "string") return;
+    if (socket.rooms.has(roomId)) {
+      socket.to(roomId).emit("typing:update", { userId, username, isTyping: false });
+    }
     socket.leave(roomId);
   });
 
   // Send message
-  socket.on("message:send", async ({ roomId, content }) => {
+  socket.on("message:send", async ({ roomId, content } = {}) => {
     try {
+      if (!inRoom(socket, roomId)) {
+        return socket.emit("error:message", { message: "Join the room before sending messages" });
+      }
+      if (typeof content !== "string" || !content.trim()) return;
+      if (content.trim().length > 2000) {
+        return socket.emit("error:message", { message: "Message is too long (max 2000 characters)" });
+      }
+
       const message = await Message.create({
         room: roomId,
         sender: userId,
@@ -69,69 +95,77 @@ io.on("connection", (socket) => {
 
       io.to(roomId).emit("message:receive", message);
     } catch (err) {
-      socket.emit("error", { message: "Failed to send message" });
+      console.error(err);
+      socket.emit("error:message", { message: "Failed to send message" });
     }
   });
 
   // Typing indicators
-  socket.on("typing:start", ({ roomId }) => {
+  socket.on("typing:start", ({ roomId } = {}) => {
+    if (!inRoom(socket, roomId)) return;
     socket.to(roomId).emit("typing:update", { userId, username, isTyping: true });
   });
-  socket.on("typing:stop", ({ roomId }) => {
+  socket.on("typing:stop", ({ roomId } = {}) => {
+    if (!inRoom(socket, roomId)) return;
     socket.to(roomId).emit("typing:update", { userId, username, isTyping: false });
   });
 
   // ─── WebRTC Call Signaling ───────────────────────────────────────
+  // Every signaling message is relayed only to sockets inside a room this
+  // socket has joined, and carries an optional `to` user id so the clients
+  // can ignore messages that are meant for somebody else.
+
+  const relay = (event, outEvent, build) =>
+    socket.on(event, (payload = {}) => {
+      if (!inRoom(socket, payload.roomId)) return;
+      socket.to(payload.roomId).emit(outEvent, build(payload));
+    });
 
   // Initiate a call to a room
-  socket.on("call:start", ({ roomId, callType }) => {
-    socket.to(roomId).emit("call:incoming", {
-      callerId: userId,
-      callerName: username,
-      roomId,
-      callType, // "video" | "audio"
-    });
-  });
+  relay("call:start", "call:incoming", (p) => ({
+    callerId: userId,
+    callerName: username,
+    roomId: p.roomId,
+    callType: p.callType === "audio" ? "audio" : "video",
+  }));
 
   // Caller cancels before answer
-  socket.on("call:cancel", ({ roomId }) => {
-    socket.to(roomId).emit("call:cancelled", { callerId: userId });
-  });
+  relay("call:cancel", "call:cancelled", () => ({ callerId: userId }));
 
   // Callee accepts
-  socket.on("call:accept", ({ roomId }) => {
-    socket.to(roomId).emit("call:accepted", { calleeId: userId, calleeName: username });
-  });
+  relay("call:accept", "call:accepted", (p) => ({ calleeId: userId, calleeName: username, to: p.to }));
 
   // Callee rejects
-  socket.on("call:reject", ({ roomId }) => {
-    socket.to(roomId).emit("call:rejected", { calleeId: userId });
-  });
+  relay("call:reject", "call:rejected", (p) => ({ calleeId: userId, to: p.to }));
 
   // End call
-  socket.on("call:end", ({ roomId }) => {
-    socket.to(roomId).emit("call:ended", { by: userId });
-  });
+  relay("call:end", "call:ended", () => ({ by: userId }));
 
   // WebRTC offer (caller → callee)
-  socket.on("webrtc:offer", ({ roomId, offer }) => {
-    socket.to(roomId).emit("webrtc:offer", { offer, from: userId });
-  });
+  relay("webrtc:offer", "webrtc:offer", (p) => ({ offer: p.offer, from: userId, to: p.to }));
 
   // WebRTC answer (callee → caller)
-  socket.on("webrtc:answer", ({ roomId, answer }) => {
-    socket.to(roomId).emit("webrtc:answer", { answer, from: userId });
-  });
+  relay("webrtc:answer", "webrtc:answer", (p) => ({ answer: p.answer, from: userId, to: p.to }));
 
   // ICE candidates (both directions)
-  socket.on("webrtc:ice", ({ roomId, candidate }) => {
-    socket.to(roomId).emit("webrtc:ice", { candidate, from: userId });
+  relay("webrtc:ice", "webrtc:ice", (p) => ({ candidate: p.candidate, from: userId, to: p.to }));
+
+  // Clear this user's typing indicator in every room when the socket drops
+  socket.on("disconnecting", () => {
+    for (const roomId of socket.rooms) {
+      if (roomId === socket.id) continue;
+      socket.to(roomId).emit("typing:update", { userId, username, isTyping: false });
+    }
   });
 
-  // Disconnect
+  // Disconnect – user stays online while any other socket of theirs is open
   socket.on("disconnect", () => {
-    onlineUsers.delete(userId);
-    io.emit("users:online", Array.from(onlineUsers.keys()));
+    const sockets = onlineUsers.get(userId);
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) onlineUsers.delete(userId);
+    }
+    broadcastOnline();
     console.log(`❌ ${username} disconnected`);
   });
 });

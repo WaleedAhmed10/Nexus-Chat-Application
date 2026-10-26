@@ -36,7 +36,7 @@ chat-app/
 cd server
 npm install
 cp .env.example .env
-# Edit .env with your MongoDB URI and JWT secret
+# Edit .env with your MongoDB URI and JWT secret (JWT_SECRET is required when NODE_ENV=production)
 npm run dev
 ```
 
@@ -77,3 +77,6 @@ CLIENT_URL=http://localhost:3000
 | typing:stop | client→server | { roomId } |
 | typing:update | server→client | { userId, username, isTyping } |
 | users:online | server→client | [userId, ...] |
+| error:message | server→client | { message } |
+| call:start / call:accept / call:reject / call:cancel / call:end | client→server | { roomId, to? } |
+| webrtc:offer / webrtc:answer / webrtc:ice | both | { roomId, to, offer \| answer \| candidate } |

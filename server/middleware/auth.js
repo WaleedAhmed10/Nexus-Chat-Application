@@ -1,12 +1,20 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
-const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_change_in_production";
+// Never silently fall back to a publicly-known secret in production.
+if (!process.env.JWT_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("JWT_SECRET must be set in production");
+}
+const JWT_SECRET = process.env.JWT_SECRET || "dev_only_insecure_secret";
+if (!process.env.JWT_SECRET) {
+  console.warn("⚠️  JWT_SECRET is not set – using an insecure development secret.");
+}
 
 const verifyToken = async (req, res, next) => {
   try {
-    const token = req.headers.authorization?.split(" ")[1];
-    if (!token) return res.status(401).json({ message: "No token provided" });
+    const header = req.headers.authorization || "";
+    const [scheme, token] = header.split(" ");
+    if (scheme !== "Bearer" || !token) return res.status(401).json({ message: "No token provided" });
 
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await User.findById(decoded.id).select("-password");
@@ -21,11 +29,15 @@ const verifyToken = async (req, res, next) => {
 
 const verifySocketToken = async (socket, next) => {
   try {
-    const token = socket.handshake.auth.token;
+    const token = socket.handshake.auth && socket.handshake.auth.token;
     if (!token) return next(new Error("No token"));
 
     const decoded = jwt.verify(token, JWT_SECRET);
-    socket.user = decoded;
+    // Reject tokens that belong to a deleted account.
+    const user = await User.findById(decoded.id).select("username");
+    if (!user) return next(new Error("User not found"));
+
+    socket.user = { id: String(user._id), username: user.username };
     next();
   } catch {
     next(new Error("Invalid token"));
